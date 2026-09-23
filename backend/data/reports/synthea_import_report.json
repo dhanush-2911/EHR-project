@@ -1,0 +1,17 @@
+{
+    "total_patients": 140,
+    "total_hospitals": 311,
+    "total_doctors": 606,
+    "total_encounters": 12361,
+    "total_conditions": 7708,
+    "total_allergies": 74,
+    "total_prescriptions": 14016,
+    "total_observations": 100402,
+    "total_procedures": 0,
+    "records_inserted": 135618,
+    "records_updated": 0,
+    "records_skipped": 0,
+    "records_failed": 0,
+    "duplicate_records_prevented": 0,
+    "import_duration_seconds": 912.57
+}

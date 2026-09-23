@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased text-slate-800 bg-slate-50 font-sans;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-glass-gradient backdrop-blur-xl border border-white/60 shadow-card rounded-2xl;
+  }
+  
+  .btn-primary {
+    @apply px-5 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl shadow-lg shadow-primary-500/30 hover:shadow-primary-500/50 hover:from-primary-600 hover:to-primary-700 transition-all duration-300 focus:ring-4 focus:ring-primary-500/30 outline-none transform hover:-translate-y-0.5 font-medium;
+  }
+  
+  .btn-secondary {
+    @apply px-5 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all duration-300 focus:ring-4 focus:ring-slate-500/10 outline-none shadow-sm font-medium;
+  }
+
+  .btn-danger {
+    @apply px-5 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:from-red-600 hover:to-red-700 transition-all duration-300 focus:ring-4 focus:ring-red-500/30 outline-none transform hover:-translate-y-0.5 font-medium;
+  }
+}
+
+@layer utilities {
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+  .animation-delay-4000 {
+    animation-delay: 4s;
+  }
+}
