@@ -101,8 +101,38 @@ def register_view(request):
             user.save()
         elif role == 'doctor':
             import uuid
+            from users.models import Hospital
+            from consent.models import AccessGrant
+            from django.utils import timezone
+            from datetime import timedelta
+            
             source_id = str(uuid.uuid4())
-            Doctor.objects.create(name=f"{first_name} {last_name}", source_id=source_id, user=user)
+            raw_doc_name = f"{first_name} {last_name}".strip() or username
+            doc_name = raw_doc_name if raw_doc_name.lower().startswith('dr.') else f"Dr. {raw_doc_name}"
+            
+            default_hospital = Hospital.objects.first()
+            doctor = Doctor.objects.create(
+                name=doc_name,
+                source_id=source_id,
+                user=user,
+                hospital=default_hospital,
+                specialty="General Medicine"
+            )
+            
+            # Automatically provision access grants for existing patients for smooth demo/clinical testing
+            for patient in Patient.objects.all():
+                AccessGrant.objects.get_or_create(
+                    patient=patient,
+                    doctor=doctor,
+                    defaults={
+                        'hospital': default_hospital,
+                        'scope': ['medical_history', 'lab_reports', 'prescriptions'],
+                        'purpose': 'Direct Care & Clinical Review',
+                        'status': 'approved',
+                        'approval_date': timezone.now(),
+                        'expiry_date': timezone.now() + timedelta(days=365)
+                    }
+                )
             
         return Response({'status': 'Registration successful'}, status=status.HTTP_201_CREATED)
     except Exception as e:

@@ -6,6 +6,11 @@ import api from '../../api';
 export default function DoctorDashboard() {
   const [patients, setPatients] = useState([]);
 
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const rawName = user?.name || (user?.username ? user.username : 'Doctor');
+  const doctorName = rawName.toLowerCase().startsWith('dr.') ? rawName : `Dr. ${rawName}`;
+
   useEffect(() => {
     const fetchPatients = async () => {
       try {
@@ -30,7 +35,7 @@ export default function DoctorDashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Welcome back, Dr. Smith</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Welcome back, {doctorName}</h1>
           <p className="text-slate-500">Here's an overview of your patients today.</p>
         </div>
         
