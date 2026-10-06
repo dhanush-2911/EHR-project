@@ -21,6 +21,9 @@ class PatientSerializer(serializers.ModelSerializer):
             return 'NO_ACCESS'
             
         doctor_id = request.query_params.get('doctor_id') or request.headers.get('X-Doctor-ID')
+        if not doctor_id and hasattr(request.user, 'doctor'):
+            doctor_id = request.user.doctor.source_id
+            
         if not doctor_id:
             return 'NO_ACCESS'
             
