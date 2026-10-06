@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Activity, LayoutDashboard, Users, FileText, 
-  BrainCircuit, History, Settings, LogOut, Bell, Sun, Moon
+  BrainCircuit, History, Settings, LogOut, Bell, Sun, Moon, User
 } from 'lucide-react';
 
 export default function MainLayout({ role }) {
@@ -118,14 +118,16 @@ export default function MainLayout({ role }) {
   };
 
   const doctorNav = [
-    { name: 'Dashboard', path: '/doctor', icon: LayoutDashboard },
+    { name: 'Dashboard', path: '/doctor/dashboard', icon: LayoutDashboard },
     { name: 'Patients', path: '/doctor/patients', icon: Users },
     { name: 'Consents', path: '/doctor/consents', icon: FileText },
     { name: 'AI Insights', path: '/doctor/insights', icon: BrainCircuit },
+    { name: 'My Profile', path: '/doctor/profile', icon: User },
   ];
 
   const patientNav = [
     { name: 'My Portal', path: '/patient', icon: LayoutDashboard },
+    { name: 'My Profile', path: '/patient/profile', icon: User },
   ];
 
   const navItems = role === 'patient' ? patientNav : doctorNav;
@@ -232,12 +234,16 @@ export default function MainLayout({ role }) {
               </div>
             )}
             
-            <div className="flex items-center space-x-3 border-l pl-4 border-slate-200">
-              <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-sm">
+            <Link 
+              to={role === 'patient' ? '/patient/profile' : '/doctor/profile'}
+              className="flex items-center space-x-3 border-l pl-4 border-slate-200 hover:opacity-80 transition-opacity cursor-pointer group"
+              title="View & Edit Profile"
+            >
+              <div className="h-8 w-8 rounded-full bg-primary-100 group-hover:ring-2 group-hover:ring-primary-400 flex items-center justify-center text-primary-700 font-bold text-sm transition-all shadow-sm">
                 {initials}
               </div>
-              <span className="text-sm font-medium text-slate-700 hidden sm:block">{userName}</span>
-            </div>
+              <span className="text-sm font-semibold text-slate-700 group-hover:text-primary-700 hidden sm:block transition-colors">{userName}</span>
+            </Link>
             <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 transition-colors md:hidden" title="Sign Out">
               <LogOut className="h-5 w-5" />
             </button>

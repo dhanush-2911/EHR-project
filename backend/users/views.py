@@ -2,21 +2,71 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-@api_view(['GET'])
+@api_view(['GET', 'PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def current_user(request):
     user = request.user
+    
+    if request.method in ['PUT', 'PATCH']:
+        first_name = request.data.get('first_name')
+        last_name = request.data.get('last_name')
+        email = request.data.get('email')
+        phone = request.data.get('phone', '')
+        
+        if email is not None:
+            user.email = email
+            user.save(update_fields=['email'])
+            
+        if user.role == 'doctor' and hasattr(user, 'doctor'):
+            doctor = user.doctor
+            if first_name is not None or last_name is not None:
+                f_name = first_name if first_name is not None else user.first_name
+                l_name = last_name if last_name is not None else user.last_name
+                full = f"{f_name} {l_name}".strip()
+                if full and not full.lower().startswith('dr.'):
+                    full = f"Dr. {full}"
+                doctor.name = full or doctor.name
+            if 'specialty' in request.data:
+                doctor.specialty = request.data.get('specialty')
+            doctor.save()
+            
+        elif user.role == 'patient' and hasattr(user, 'patient'):
+            patient = user.patient
+            if first_name is not None: patient.first_name = first_name
+            if last_name is not None: patient.last_name = last_name
+            if 'gender' in request.data: patient.gender = request.data.get('gender')
+            if 'dob' in request.data: patient.dob = request.data.get('dob')
+            if 'blood_group' in request.data: patient.blood_group = request.data.get('blood_group')
+            if 'address' in request.data: patient.address = request.data.get('address')
+            patient.save()
+
     data = {
         'id': user.id,
         'username': user.username,
+        'email': user.email,
         'role': user.role,
+        'date_joined': user.date_joined.isoformat() if hasattr(user, 'date_joined') and user.date_joined else None,
     }
     if user.role == 'doctor' and hasattr(user, 'doctor'):
-        data['doctor_id'] = user.doctor.source_id
-        data['name'] = user.doctor.name
+        doc = user.doctor
+        data['doctor_id'] = doc.source_id
+        data['name'] = doc.name
+        data['specialty'] = doc.specialty or 'General Medicine'
+        data['hospital'] = doc.hospital.name if doc.hospital else 'General Hospital'
+        data['hospital_id'] = str(doc.hospital.id) if doc.hospital else None
     elif user.role == 'patient' and hasattr(user, 'patient'):
-        data['patient_id'] = str(user.patient.id)
-        data['name'] = f"{user.patient.first_name} {user.patient.last_name}"
+        p = user.patient
+        data['patient_id'] = str(p.id)
+        data['first_name'] = p.first_name
+        data['last_name'] = p.last_name
+        data['name'] = f"{p.first_name} {p.last_name}".strip()
+        data['gender'] = p.gender or 'Not Specified'
+        data['dob'] = str(p.dob) if p.dob else None
+        data['blood_group'] = p.blood_group or 'Unknown'
+        data['address'] = p.address or ''
+        data['hospital'] = p.primary_hospital.name if p.primary_hospital else 'Central Health System'
+        if hasattr(p, 'health_id'):
+            data['health_id'] = p.health_id.health_id_str
     return Response(data)
 
 from rest_framework_simplejwt.tokens import RefreshToken

@@ -9,7 +9,9 @@ import DoctorPatients from './pages/doctor/DoctorPatients';
 import PatientDetails from './pages/doctor/PatientDetails';
 import Consents from './pages/doctor/Consents';
 import AIInsights from './pages/doctor/AIInsights';
+import DoctorProfile from './pages/doctor/DoctorProfile';
 import PatientPortal from './pages/patient/PatientPortal';
+import PatientProfile from './pages/patient/PatientProfile';
 
 import Register from './pages/auth/Register';
 
@@ -30,11 +32,13 @@ function App() {
           <Route path="patients/:id" element={<PatientDetails />} />
           <Route path="consents" element={<Consents />} />
           <Route path="insights" element={<AIInsights />} />
+          <Route path="profile" element={<DoctorProfile />} />
         </Route>
 
         {/* Patient Routes */}
         <Route path="/patient" element={<MainLayout role="patient" />}>
           <Route index element={<PatientPortal />} />
+          <Route path="profile" element={<PatientProfile />} />
         </Route>
 
         {/* Redirect root to login for now */}
