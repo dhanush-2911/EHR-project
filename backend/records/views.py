@@ -587,6 +587,56 @@ class PatientReportUploadAnalysisView(APIView):
         except Exception as e:
             return Response({"error": "Failed to connect to AI Report Analysis Engine. Verify that AI Engine is running."}, status=503)
 
+class PatientDietPlanView(APIView):
+    permission_classes = [IsDoctorOrPatient]
+
+    def post(self, request):
+        patient = None
+        if request.user.role == 'patient' and hasattr(request.user, 'patient'):
+            patient = request.user.patient
+        elif request.data.get('patient_id'):
+            patient = get_object_or_404(Patient, id=request.data.get('patient_id'))
+        else:
+            return Response({"error": "Patient context is required."}, status=400)
+
+        # Gather patient's diagnosis and medical conditions
+        conditions = list(Condition.objects.filter(patient=patient).values_list('description', flat=True))
+        medications = list(Prescription.objects.filter(patient=patient).values_list('medication_name', flat=True))
+        allergies = list(AllergyRecord.objects.filter(patient=patient).values_list('allergen', flat=True))
+        dietary_pref = request.data.get('preference', 'Standard')
+
+        age = 40
+        if patient.dob:
+            age = (datetime.date.today() - patient.dob).days // 365
+
+        payload = {
+            "patient_id": str(patient.id),
+            "patient_name": f"{patient.first_name} {patient.last_name}",
+            "patient_age": age,
+            "gender": patient.gender or "Unknown",
+            "conditions": conditions,
+            "medications": medications,
+            "allergies": allergies,
+            "dietary_preference": dietary_pref
+        }
+
+        # Log audit trail
+        from audit.models import AuditLog
+        AuditLog.objects.create(
+            action='DIET_PLAN_GENERATED_BY_AI',
+            patient=patient,
+            hospital=patient.primary_hospital,
+            resource='ai_diet_nutrition_planner'
+        )
+
+        try:
+            resp = requests.post("http://localhost:8002/diet-planner/", json=payload, timeout=15)
+            if resp.status_code == 200:
+                return Response(resp.json())
+            return Response({"error": f"AI Engine returned status {resp.status_code}"}, status=502)
+        except Exception as e:
+            return Response({"error": "Failed to connect to AI Diet Planner Engine."}, status=503)
+
 class FhirPatientView(APIView):
     permission_classes = [IsDoctorOrPatient]
     

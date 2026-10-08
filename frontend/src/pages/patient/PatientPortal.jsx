@@ -3,7 +3,7 @@ import {
   Shield, Check, X, Clock, Activity, FileText, AlertTriangle, 
   User, Calendar, Pill, HeartPulse, FileHeart, Sparkles, Send, 
   ScanLine, Upload, FileUp, CheckCircle2, TrendingUp, AlertCircle, 
-  Info, RefreshCw, ChevronRight, Download
+  Info, RefreshCw, ChevronRight, Download, Utensils, Apple, Coffee
 } from 'lucide-react';
 import api from '../../api';
 
@@ -88,6 +88,31 @@ TEST RESULTS:
 CLINICAL IMPRESSION:
 Patient demonstrates persistent hyperglycemia consistent with Type 2 Diabetes Mellitus with early mild microvascular nephropathy markers (reduced eGFR) and Stage 2 Essential Hypertension.`
     );
+  };
+
+  // AI Diet & Nutrition Planner State
+  const [dietPlan, setDietPlan] = useState(null);
+  const [dietLoading, setDietLoading] = useState(false);
+  const [dietError, setDietError] = useState(null);
+  const [dietPref, setDietPref] = useState('Standard'); // Standard, Vegetarian, Vegan, Low-Carb
+  const [selectedMealDay, setSelectedMealDay] = useState(0);
+
+  const fetchDietPlan = async (prefOverride) => {
+    const preferenceToUse = prefOverride || dietPref;
+    setDietLoading(true);
+    setDietError(null);
+    try {
+      const res = await api.post('diet-plan/', {
+        preference: preferenceToUse,
+        patient_id: patient?.id
+      });
+      setDietPlan(res.data);
+    } catch (err) {
+      console.error(err);
+      setDietError('Failed to generate clinical diet plan. Please try again.');
+    } finally {
+      setDietLoading(false);
+    }
   };
 
   const fetchData = async () => {
@@ -240,6 +265,7 @@ Patient demonstrates persistent hyperglycemia consistent with Type 2 Diabetes Me
       <div className="flex overflow-x-auto border-b border-slate-200 mb-6 gap-2 hide-scrollbar">
         <button onClick={() => setActiveTab('records')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'records' ? 'border-b-2 border-primary-600 text-primary-700 bg-primary-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><FileHeart className="w-5 h-5 mr-2"/> My Health Records</button>
         <button onClick={() => setActiveTab('report-analysis')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'report-analysis' ? 'border-b-2 border-indigo-600 text-indigo-700 bg-indigo-50/70 rounded-t-lg shadow-xs' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-50'}`}><FileUp className="w-5 h-5 mr-2 text-indigo-600"/> Upload & Analyze Report</button>
+        <button onClick={() => { setActiveTab('diet-planner'); if (!dietPlan) fetchDietPlan(); }} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'diet-planner' ? 'border-b-2 border-emerald-600 text-emerald-700 bg-emerald-50/70 rounded-t-lg shadow-xs' : 'text-slate-500 hover:text-emerald-600 hover:bg-slate-50'}`}><Utensils className="w-5 h-5 mr-2 text-emerald-600"/> AI Diet & Nutrition Plan</button>
         <button onClick={() => setActiveTab('consents')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'consents' ? 'border-b-2 border-primary-600 text-primary-700 bg-primary-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><Shield className="w-5 h-5 mr-2"/> Access Consents</button>
         <button onClick={() => setActiveTab('audit')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'audit' ? 'border-b-2 border-primary-600 text-primary-700 bg-primary-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><FileText className="w-5 h-5 mr-2"/> Audit History</button>
         <button onClick={() => setActiveTab('ai')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'ai' ? 'border-b-2 border-purple-600 text-purple-700 bg-purple-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><Sparkles className="w-5 h-5 mr-2"/> AI Health Assistant</button>
@@ -733,6 +759,245 @@ Patient demonstrates persistent hyperglycemia consistent with Type 2 Diabetes Me
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-500 text-xs text-center font-medium">
                 {reportResult.disclaimer}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Content - AI Diet & Nutrition Meal Planner */}
+      {activeTab === 'diet-planner' && (
+        <div className="space-y-8 animate-fade-in">
+          {/* Header Banner */}
+          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-emerald-600 via-teal-700 to-cyan-700 p-8 text-white shadow-xl">
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white">
+                    <Utensils className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black tracking-tight">AI Clinical Diet & Nutrition Planner</h2>
+                    <p className="text-emerald-100 text-sm mt-0.5">
+                      Tailored weekly meal recipes, macro targets, and clinical restriction guidelines formulated from your EHR conditions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preference selector */}
+              <div className="flex items-center gap-2 bg-black/20 p-1.5 rounded-2xl backdrop-blur-md border border-white/20 self-start md:self-auto">
+                {['Standard', 'Vegetarian', 'Vegan', 'Low-Carb'].map((pref) => (
+                  <button
+                    key={pref}
+                    type="button"
+                    onClick={() => {
+                      setDietPref(pref);
+                      fetchDietPlan(pref);
+                    }}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      dietPref === pref
+                        ? 'bg-white text-emerald-900 shadow-sm'
+                        : 'text-white/80 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {pref}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {dietLoading ? (
+            <div className="p-16 text-center flex flex-col items-center justify-center space-y-3 bg-white rounded-3xl border border-slate-100 shadow-sm">
+              <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin" />
+              <p className="text-sm font-bold text-slate-700">Formulating personalized clinical meal plan from your medical history...</p>
+              <p className="text-xs text-slate-400">Cross-referencing active diagnoses, medication risks, and renal/cardiovascular guidelines</p>
+            </div>
+          ) : dietPlan ? (
+            <div className="space-y-6 animate-slide-up">
+              {/* Protocol Title & Target Badges */}
+              <div className="glass-card p-6 md:p-8 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <span className="text-[11px] font-black uppercase text-emerald-600 tracking-wider">Clinical Diet Protocol</span>
+                    <h3 className="text-xl font-extrabold text-slate-800">{dietPlan.plan_meta?.diet_protocol_title}</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500">Pattern:</span>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      {dietPlan.plan_meta?.preference} Diet
+                    </span>
+                  </div>
+                </div>
+
+                {/* Key Nutritional Targets Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+                  <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100/80 text-center">
+                    <span className="text-[10px] font-black uppercase text-emerald-700 block mb-1">Sodium Limit</span>
+                    <span className="text-base font-extrabold text-slate-800">{dietPlan.nutritional_targets?.sodium}</span>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-teal-50/60 border border-teal-100/80 text-center">
+                    <span className="text-[10px] font-black uppercase text-teal-700 block mb-1">Daily Hydration</span>
+                    <span className="text-base font-extrabold text-slate-800">{dietPlan.nutritional_targets?.hydration}</span>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-cyan-50/60 border border-cyan-100/80 text-center">
+                    <span className="text-[10px] font-black uppercase text-cyan-700 block mb-1">Protein Ratio</span>
+                    <span className="text-sm font-extrabold text-slate-800 line-clamp-1" title={dietPlan.nutritional_targets?.protein}>{dietPlan.nutritional_targets?.protein}</span>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100/80 text-center">
+                    <span className="text-[10px] font-black uppercase text-indigo-700 block mb-1">Electrolyte Rule</span>
+                    <span className="text-xs font-extrabold text-slate-800 line-clamp-2" title={dietPlan.nutritional_targets?.potassium}>{dietPlan.nutritional_targets?.potassium}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Foods to Enjoy vs. Foods to Avoid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Foods to Enjoy */}
+                <div className="glass-card p-6 md:p-8 border-l-4 border-l-emerald-500 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    <h4 className="text-base font-extrabold text-slate-800">Cardioprotective & Renal Foods to Enjoy</h4>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {dietPlan.food_guidelines?.enjoy?.map((item, idx) => (
+                      <span key={idx} className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-200 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Foods to Avoid */}
+                <div className="glass-card p-6 md:p-8 border-l-4 border-l-rose-500 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-rose-600" />
+                    <h4 className="text-base font-extrabold text-slate-800">Clinical Restrictions & Foods to Avoid</h4>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {dietPlan.food_guidelines?.avoid?.map((item, idx) => (
+                      <span key={idx} className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-200 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 7-Day Interactive Weekly Meal Schedule */}
+              <div className="glass-card p-6 md:p-8 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-emerald-600" />
+                      Weekly 7-Day Meal Schedule
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Click any day to view personalized recipes and daily focus.</p>
+                  </div>
+                </div>
+
+                {/* Days Selector Pills */}
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                  {dietPlan.weekly_meal_schedule?.map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedMealDay(idx)}
+                      className={`p-3 rounded-2xl border text-center transition-all ${
+                        selectedMealDay === idx
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-500/20 font-black'
+                          : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 font-bold text-xs'
+                      }`}
+                    >
+                      <div className="text-[11px] uppercase tracking-wider">{item.day.slice(0, 3)}</div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Selected Day Meals View */}
+                {dietPlan.weekly_meal_schedule?.[selectedMealDay] && (
+                  <div className="p-6 rounded-3xl bg-slate-50/80 border border-slate-200 space-y-5 animate-fade-in">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-black text-slate-800">
+                          {dietPlan.weekly_meal_schedule[selectedMealDay].day}'s Menu
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                          Day {selectedMealDay + 1}
+                        </span>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-500 italic">
+                        {dietPlan.weekly_meal_schedule[selectedMealDay].daily_focus}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      {/* Breakfast */}
+                      <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-[11px] font-black uppercase text-amber-600 flex items-center gap-1.5">
+                          <Coffee className="w-4 h-4" /> Breakfast
+                        </span>
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed">
+                          {dietPlan.weekly_meal_schedule[selectedMealDay].breakfast}
+                        </p>
+                      </div>
+
+                      {/* Lunch */}
+                      <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-[11px] font-black uppercase text-emerald-600 flex items-center gap-1.5">
+                          <Utensils className="w-4 h-4" /> Lunch
+                        </span>
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed">
+                          {dietPlan.weekly_meal_schedule[selectedMealDay].lunch}
+                        </p>
+                      </div>
+
+                      {/* Dinner */}
+                      <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-[11px] font-black uppercase text-indigo-600 flex items-center gap-1.5">
+                          <Utensils className="w-4 h-4" /> Dinner
+                        </span>
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed">
+                          {dietPlan.weekly_meal_schedule[selectedMealDay].dinner}
+                        </p>
+                      </div>
+
+                      {/* Snack */}
+                      <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-[11px] font-black uppercase text-purple-600 flex items-center gap-1.5">
+                          <Apple className="w-4 h-4" /> Healthy Snack
+                        </span>
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed">
+                          {dietPlan.weekly_meal_schedule[selectedMealDay].snack}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Clinical Rationale Footer */}
+                <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 text-emerald-950 text-xs leading-relaxed font-medium flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                  <span>{dietPlan.clinical_rationale}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-4">
+              <Utensils className="w-12 h-12 text-slate-300 mx-auto" />
+              <h3 className="text-base font-bold text-slate-800">Generate Your Personalized Meal Plan</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                MediLink AI can synthesize a disease-specific meal schedule based on your diagnosis of Hypertension, Diabetes, or Renal markers.
+              </p>
+              <button
+                type="button"
+                onClick={() => fetchDietPlan()}
+                className="btn-primary text-xs font-bold py-2.5 px-6"
+              >
+                Generate Diet Plan Now
+              </button>
             </div>
           )}
         </div>

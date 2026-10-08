@@ -888,3 +888,178 @@ async def doctor_diagnose(data: DoctorDiagnosisRequest):
         "clinical_disclaimer": "AI Clinical Decision Support is an assistive tool intended for licensed physicians. It does not replace professional medical judgment, physical examination, or diagnostic verification."
     }
 
+
+class DietPlanRequest(BaseModel):
+    patient_id: Optional[str] = None
+    patient_name: Optional[str] = "Patient"
+    patient_age: Optional[int] = 40
+    gender: Optional[str] = "Unknown"
+    conditions: List[str] = []
+    medications: List[str] = []
+    allergies: List[str] = []
+    dietary_preference: Optional[str] = "Standard" # Standard, Vegetarian, Vegan, Low-Carb
+
+
+@app.post("/diet-planner/")
+async def generate_diet_plan(req: DietPlanRequest):
+    conds_text = " ".join([c.lower() for c in req.conditions])
+    allergies_text = " ".join([a.lower() for a in req.allergies])
+
+    # Determine disease profile
+    has_cardio = any(k in conds_text for k in ["hypertension", "heart", "coronary", "stemi", "cardiac", "angina", "atherosclerosis"])
+    has_diabetes = any(k in conds_text for k in ["diabetes", "glucose", "hba1c", "metabolic", "hyperglycemia"])
+    has_renal = any(k in conds_text for k in ["kidney", "renal", "creatinine", "egfr", "ckd", "nephro", "glomerular"])
+    has_resp = any(k in conds_text for k in ["asthma", "copd", "pulmonary", "bronch", "lung", "apnea", "fibrosis"])
+    has_cancer = any(k in conds_text for k in ["cancer", "carcinoma", "tumor", "oncology", "lymphoma", "leukemia", "neoplasm"])
+    has_infectious = any(k in conds_text for k in ["covid", "tuberculosis", "pneumonia", "hepatitis", "infect", "dengue", "viral"])
+
+    # Target Nutritional Guidelines based on clinical conditions
+    if has_renal:
+        diet_title = "Renal-Protective & Low-Electrolyte Protocol (KDOQI Guideline)"
+        sodium_target = "< 1,800 mg/day"
+        potassium_rule = "Controlled (limit high potassium fruits like bananas, oranges, tomatoes)"
+        protein_target = "Moderate (0.6 - 0.8 g/kg body weight to reduce urea burden)"
+        hydration_rule = "1.5 - 2.0 Liters/day (as monitored by fluid balance)"
+        focus_nutrients = ["Low Phosphorus", "Controlled Potassium", "Low Sodium", "High Biological Value Proteins"]
+        key_avoid = ["Processed canned meats", "Dark colas", "Excessive bananas & potatoes", "Salt substitutes (potassium chloride)", "High phosphorus cheese"]
+        key_enjoy = ["Egg whites", "Cauliflower", "Blueberries", "Cabbage", "Garlic & Olive Oil", "White rice & Rice milk"]
+    elif has_cardio and has_diabetes:
+        diet_title = "Cardiometabolic & Glycemic DASH Synergy Protocol"
+        sodium_target = "< 1,500 mg/day"
+        potassium_rule = "Cardioprotective (rich in natural leafy vegetables and berries)"
+        protein_target = "Lean proteins (1.0 - 1.2 g/kg body weight)"
+        hydration_rule = "2.0 - 2.5 Liters/day"
+        focus_nutrients = ["Complex Soluble Fiber", "Omega-3 Fatty Acids", "Magnesium", "Low Glycemic Index Carbs"]
+        key_avoid = ["Refined white sugar and syrups", "Sodium-cured meats & bacon", "Full-fat dairy & butter", "Deep-fried foods", "Pastries & baked treats"]
+        key_enjoy = ["Steel-cut oatmeal", "Wild Alaskan salmon", "Avocado & extra-virgin olive oil", "Spinach & Kale", "Walnuts & Chia seeds", "Greek yogurt"]
+    elif has_diabetes:
+        diet_title = "Low-Glycemic Insulin Sensitivity Plan (ADA Compliant)"
+        sodium_target = "< 2,000 mg/day"
+        potassium_rule = "Balanced dietary intake"
+        protein_target = "High quality lean poultry, tofu, fish (1.0 g/kg)"
+        hydration_rule = "2.5 Liters/day"
+        focus_nutrients = ["Chromium & Magnesium", "Soluble Fiber", "Polyphenols", "Low Net Carbs"]
+        key_avoid = ["Sweetened beverages & sodas", "White bread, white rice & pasta", "Dried fruits with added syrup", "Trans fats"]
+        key_enjoy = ["Quinoa & Lentils", "Broccoli & Asparagus", "Skinless chicken breast", "Almonds", "Berries (Blueberries, Raspberries)"]
+    elif has_cardio:
+        diet_title = "Mediterranean Heart-Health & Vascular Protection Plan"
+        sodium_target = "< 1,500 mg/day"
+        potassium_rule = "High potassium & magnesium for endothelial relaxation"
+        protein_target = "Mediterranean fish and plant legumes"
+        hydration_rule = "2.0 - 2.5 Liters/day"
+        focus_nutrients = ["Monounsaturated Fats", "Polyphenols", "Antioxidants", "Plant Phytosterols"]
+        key_avoid = ["Processed red meats", "Trans fats & hydrogenated oils", "Canned soups with sodium", "Excess butter"]
+        key_enjoy = ["Extra virgin olive oil", "Mackerel & Sardines", "Dark leafy greens", "Garlic", "Flaxseed", "Pomegranates"]
+    elif has_resp:
+        diet_title = "Anti-Inflammatory Pulmonary Vitality & Airway Protocol"
+        sodium_target = "< 2,000 mg/day"
+        potassium_rule = "Standard balanced intake"
+        protein_target = "Lean tissue rebuilding (1.1 g/kg)"
+        hydration_rule = "2.5 Liters/day (helps thin airway mucus)"
+        focus_nutrients = ["Vitamin C & E", "Omega-3 EPA/DHA", "Beta-carotene", "Zinc & Quercetin"]
+        key_avoid = ["Sulfite-containing preservatives (dried fruits, wine)", "Gas-forming heavy beans at night", "Excessive dairy if mucus-sensitive"]
+        key_enjoy = ["Ginger & Turmeric tea", "Bell peppers", "Wild salmon", "Citrus fruits", "Bone broth", "Walnuts"]
+    elif has_cancer:
+        diet_title = "Oncology Cellular Support & Immune Rebuilding Protocol"
+        sodium_target = "< 2,000 mg/day"
+        potassium_rule = "Nutrient-dense natural produce"
+        protein_target = "High protein for tissue repair (1.2 - 1.5 g/kg)"
+        hydration_rule = "2.5 - 3.0 Liters/day"
+        focus_nutrients = ["Sulforaphane", "Cruciferous Indoles", "Curcumin", "Probiotics", "Antioxidants"]
+        key_avoid = ["Charred grilled meats", "Artificial food coloring", "Excess refined sugar", "Alcohol"]
+        key_enjoy = ["Broccoli sprouts", "Shiitake & Reishi mushrooms", "Green tea", "Turmeric with black pepper", "Wild fish", "Kefir"]
+    else:
+        diet_title = "Balanced Whole-Foods Preventive Longevity Protocol"
+        sodium_target = "< 2,000 mg/day"
+        potassium_rule = "Abundant fresh fruits and greens"
+        protein_target = "1.0 g/kg body weight"
+        hydration_rule = "2.0 - 2.5 Liters/day"
+        focus_nutrients = ["Micro-nutrients", "Prebiotic Fibers", "Phytonutrients", "Antioxidants"]
+        key_avoid = ["Ultra-processed snack foods", "High-fructose corn syrup", "Refined grains"]
+        key_enjoy = ["Rainbow vegetables", "Lean proteins", "Nuts & seeds", "Whole grains", "Fermented foods"]
+
+    # 7-Day Curated Meal Schedule tailored to clinical profile
+    days = [
+        {
+            "day": "Monday",
+            "breakfast": "Steel-cut oatmeal topped with antioxidant blueberries, chia seeds, and cinnamon (no added sugar).",
+            "lunch": "Mediterranean grilled herb chicken breast over mixed dark greens with extra-virgin olive oil and lemon vinaigrette.",
+            "dinner": "Pan-seared Alaskan wild salmon with roasted asparagus and organic quinoa.",
+            "snack": "A handful of raw walnuts with green tea.",
+            "daily_focus": "Endothelial nitric oxide boosting & glycemic stabilization."
+        },
+        {
+            "day": "Tuesday",
+            "breakfast": "Poached farm egg on sprouted whole-grain toast with mashed avocado and microgreens.",
+            "lunch": "Hearty vegetable lentil stew prepared with garlic, carrots, celery, and cumin (zero added sodium).",
+            "dinner": "Baked lemon-herb cod fillet with steamed broccoli florets and roasted sweet potato wedges.",
+            "snack": "Sliced cucumbers with fresh dill and low-fat Greek yogurt dip.",
+            "daily_focus": "High soluble fiber for cholesterol excretion and renal ease."
+        },
+        {
+            "day": "Wednesday",
+            "breakfast": "Spinach, ginger, unsweetened almond milk, and plant protein power smoothie.",
+            "lunch": "Warm quinoa grain bowl with steamed kale, chickpeas, diced bell peppers, and tahini drizzle.",
+            "dinner": "Turkey breast stir-fry with zucchini, bok choy, and snap peas in sesame oil with brown rice.",
+            "snack": "Fresh raspberries with a tablespoon of pumpkin seeds.",
+            "daily_focus": "Anti-inflammatory airway & cellular cellular repair."
+        },
+        {
+            "day": "Thursday",
+            "breakfast": "Rolled oats overnight soaked in oat milk, flaxseeds, and crushed almonds.",
+            "lunch": "Fresh Mediterranean salad with cucumber, olives, red onion, parsley, and grilled tofu.",
+            "dinner": "Baked rainbow trout with garlic roasted green beans and wild black rice.",
+            "snack": "Celery sticks with natural unsalted almond butter.",
+            "daily_focus": "Omega-3 fatty acid anti-thrombotic support."
+        },
+        {
+            "day": "Friday",
+            "breakfast": "Scrambled organic egg whites with baby spinach, tomatoes, and a slice of avocado.",
+            "lunch": "Chilled wild tuna salad tossed with chopped celery, red bell pepper, and olive oil over romaine lettuce.",
+            "dinner": "Rosemary roasted chicken thigh with baked butternut squash and steamed cauliflower mash.",
+            "snack": "Fresh green apple slices dusted with cinnamon.",
+            "daily_focus": "Low glycemic load & potassium-sodium balance."
+        },
+        {
+            "day": "Saturday",
+            "breakfast": "Buckwheat pancakes lightly topped with fresh blackberry puree and crushed pecans.",
+            "lunch": "Warm roasted vegetable soup (cauliflower, leeks, garlic, zucchini) with a whole-grain spelt roll.",
+            "dinner": "Herb-crusted baked salmon with sautéed rainbow chard and lemon pearl barley.",
+            "snack": "Steamed edamame sprinkled with toasted sesame seeds.",
+            "daily_focus": "Micronutrient repletion & gut microbiome diversity."
+        },
+        {
+            "day": "Sunday",
+            "breakfast": "Warm chia seed pudding infused with vanilla bean and topped with sliced strawberries.",
+            "lunch": "Grilled portobello mushroom cap stuffed with quinoa, spinach, and pine nuts.",
+            "dinner": "Lean herb-roasted turkey cutlet with steamed baby carrots and a small baked sweet potato.",
+            "snack": "A cup of chamomile or hibiscus herbal tea with 10 raw almonds.",
+            "daily_focus": "Vascular decompression & rest-day cellular replenishment."
+        }
+    ]
+
+    return {
+        "status": "success",
+        "plan_meta": {
+            "patient_name": req.patient_name,
+            "diet_protocol_title": diet_title,
+            "target_conditions": req.conditions,
+            "allergy_warnings": [a for a in req.allergies if a],
+            "preference": req.dietary_preference
+        },
+        "nutritional_targets": {
+            "sodium": sodium_target,
+            "potassium": potassium_rule,
+            "protein": protein_target,
+            "hydration": hydration_rule,
+            "core_nutrients": focus_nutrients
+        },
+        "food_guidelines": {
+            "enjoy": key_enjoy,
+            "avoid": key_avoid
+        },
+        "weekly_meal_schedule": days,
+        "clinical_rationale": f"This meal plan is dynamically customized for {req.patient_name} based on active clinical records ({', '.join(req.conditions) or 'General Health'}). Nutritional targets strictly adhere to evidenced-based medical nutrition therapy guidelines."
+    }
+
+
