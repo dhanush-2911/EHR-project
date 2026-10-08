@@ -331,11 +331,30 @@ class PatientChatView(APIView):
         # We can extract messages from the request
         messages = request.data.get('messages', [])
         
+        # Gather patient's comprehensive EHR records for real clinical AI reasoning
+        conditions = list(Condition.objects.filter(patient=patient).values('code', 'description', 'onset_date'))
+        medications = list(Prescription.objects.filter(patient=patient).values('medication_name', 'dosage', 'status', 'start_date'))
+        observations = list(Observation.objects.filter(patient=patient).order_by('-date')[:30].values('test_name', 'value', 'units', 'reference_range', 'date'))
+        allergies = list(AllergyRecord.objects.filter(patient=patient).values('allergen', 'reaction', 'severity'))
+        encounters = list(Encounter.objects.filter(patient=patient).values('encounter_type', 'start_date', 'reason'))
+
+        age = None
+        if patient.dob:
+            age = (datetime.date.today() - patient.dob).days // 365
+
         payload = {
             "messages": messages,
             "patient_context": {
                 "id": str(patient.id),
-                "name": f"{patient.first_name} {patient.last_name}"
+                "name": f"{patient.first_name} {patient.last_name}",
+                "age": age,
+                "gender": patient.gender,
+                "blood_group": patient.blood_group,
+                "conditions": conditions,
+                "medications": medications,
+                "observations": observations,
+                "allergies": allergies,
+                "encounters": encounters,
             }
         }
         
@@ -460,8 +479,8 @@ class ReferralViewSet(viewsets.ViewSet):
             
         return Response({'id': str(referral.id), 'status': 'pending'})
 class OcrExtractionView(APIView):
-    # Only doctors can upload documents for OCR
-    permission_classes = [IsDoctor]
+    # Allowed for doctors and patients
+    permission_classes = [IsDoctorOrPatient]
     
     def post(self, request):
         if 'file' not in request.FILES:
@@ -478,6 +497,95 @@ class OcrExtractionView(APIView):
             return Response({"error": f"AI Engine returned {resp.status_code}"}, status=502)
         except Exception as e:
             return Response({"error": "Failed to connect to AI engine for OCR extraction"}, status=503)
+
+class PatientReportUploadAnalysisView(APIView):
+    permission_classes = [IsDoctorOrPatient]
+
+    def post(self, request):
+        # Determine patient
+        patient = None
+        if request.user.role == 'patient' and hasattr(request.user, 'patient'):
+            patient = request.user.patient
+        elif request.data.get('patient_id'):
+            patient = get_object_or_404(Patient, id=request.data.get('patient_id'))
+        else:
+            return Response({"error": "Patient context is required."}, status=400)
+
+        report_text = request.data.get('report_text', '').strip()
+        
+        # If a file was uploaded, extract text from it
+        if 'file' in request.FILES:
+            file_obj = request.FILES['file']
+            filename = file_obj.name.lower()
+            
+            # PDF parsing
+            if filename.endswith('.pdf'):
+                try:
+                    import pypdf
+                    reader = pypdf.PdfReader(file_obj)
+                    extracted = "\n".join([page.extract_text() or "" for page in reader.pages]).strip()
+                    if extracted:
+                        report_text = f"{report_text}\n\n{extracted}".strip()
+                except Exception as pe:
+                    pass
+
+            # Plain text / CSV parsing
+            if not report_text and (filename.endswith('.txt') or filename.endswith('.csv') or filename.endswith('.json')):
+                try:
+                    report_text = file_obj.read().decode('utf-8', errors='ignore').strip()
+                except:
+                    pass
+
+            # If still empty or image, forward to OCR engine
+            if not report_text:
+                try:
+                    file_obj.seek(0)
+                    files = {'file': (file_obj.name, file_obj.read(), file_obj.content_type)}
+                    ocr_res = requests.post("http://localhost:8002/ocr/", files=files, timeout=15)
+                    if ocr_res.status_code == 200:
+                        report_text = ocr_res.json().get('text', '')
+                except Exception as oe:
+                    pass
+
+        if not report_text or len(report_text) < 5:
+            return Response({"error": "Please provide medical report text or upload a readable report file (PDF, TXT, or Image)."}, status=400)
+
+        # Gather patient's historical EHR data
+        conditions = list(Condition.objects.filter(patient=patient).values_list('description', flat=True))
+        medications = list(Prescription.objects.filter(patient=patient).values_list('medication_name', flat=True))
+        allergies = list(AllergyRecord.objects.filter(patient=patient).values_list('allergen', flat=True))
+
+        age = 40
+        if patient.dob:
+            age = (datetime.date.today() - patient.dob).days // 365
+
+        payload = {
+            "report_text": report_text,
+            "patient_id": str(patient.id),
+            "patient_name": f"{patient.first_name} {patient.last_name}",
+            "patient_age": age,
+            "gender": patient.gender or "Unknown",
+            "existing_conditions": conditions,
+            "existing_medications": medications,
+            "existing_allergies": allergies
+        }
+
+        # Log audit trail
+        from audit.models import AuditLog
+        AuditLog.objects.create(
+            action='REPORT_ANALYZED_BY_AI',
+            patient=patient,
+            hospital=patient.primary_hospital,
+            resource='ai_medical_report_analyzer'
+        )
+
+        try:
+            resp = requests.post("http://localhost:8002/analyze-report/", json=payload, timeout=20)
+            if resp.status_code == 200:
+                return Response(resp.json())
+            return Response({"error": f"AI Engine returned status {resp.status_code}"}, status=502)
+        except Exception as e:
+            return Response({"error": "Failed to connect to AI Report Analysis Engine. Verify that AI Engine is running."}, status=503)
 
 class FhirPatientView(APIView):
     permission_classes = [IsDoctorOrPatient]

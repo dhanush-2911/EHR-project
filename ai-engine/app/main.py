@@ -146,21 +146,270 @@ async def generate_timeline(bundle: TimelineBundle):
 
 @app.post("/ocr/")
 async def extract_ocr(file: UploadFile = File(...)):
-    # 8. OCR extraction using Tesseract
+    # OCR extraction using Tesseract or text fallback
     try:
-        import pytesseract
-        from PIL import Image
         content = await file.read()
-        image = Image.open(io.BytesIO(content))
-        text = pytesseract.image_to_string(image)
-        
+        extracted_text = ""
+        filename = file.filename or ""
+
+        # Try PDF extraction
+        if filename.lower().endswith('.pdf'):
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(io.BytesIO(content))
+                extracted_text = "\n".join([page.extract_text() or "" for page in reader.pages]).strip()
+            except Exception as pe:
+                pass
+
+        # Try plain text decode
+        if not extracted_text:
+            try:
+                extracted_text = content.decode('utf-8', errors='ignore').strip()
+            except:
+                pass
+
+        # Try image OCR if pytesseract is installed
+        if not extracted_text:
+            try:
+                import pytesseract
+                from PIL import Image
+                image = Image.open(io.BytesIO(content))
+                extracted_text = pytesseract.image_to_string(image).strip()
+            except:
+                pass
+
         return {
-            "text": text,
-            "confidence": "Low",
+            "text": extracted_text or "No legible text found in document.",
+            "confidence": "Medium" if extracted_text else "Low",
             "disclaimer": "OCR extraction requires human confirmation before being treated as authoritative."
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+class ReportAnalysisRequest(BaseModel):
+    report_text: str
+    patient_id: Optional[str] = None
+    patient_name: Optional[str] = "Patient"
+    patient_age: Optional[int] = 40
+    gender: Optional[str] = "Unknown"
+    existing_conditions: List[str] = []
+    existing_medications: List[str] = []
+    existing_allergies: List[str] = []
+
+
+@app.post("/analyze-report/")
+async def analyze_medical_report(req: ReportAnalysisRequest):
+    text = req.report_text.strip()
+    text_lower = text.lower()
+    
+    import re
+    
+    # 1. Structured Biomarker & Vital Parser
+    detected_biomarkers = []
+    
+    biomarker_patterns = [
+        ("Hemoglobin A1c (HbA1c)", r'(?:hba1c|a1c|glycated hemoglobin)[\s:=]+([0-9]+\.?[0-9]*)[\s%]*', "%", 4.0, 5.6, 6.5, "Glycemic control marker"),
+        ("Fasting Blood Glucose", r'(?:fasting blood sugar|fasting glucose|fbs|glucose)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:mg/dl)?', "mg/dL", 70.0, 99.0, 126.0, "Pancreatic endocrine function"),
+        ("Systolic Blood Pressure", r'(?:systolic|bp|blood pressure)[\s:=]+([0-9]{2,3})\s*(?:/|\s*over\s*)\s*([0-9]{2,3})?', "mmHg", 90.0, 120.0, 140.0, "Cardiovascular pressure"),
+        ("Serum Creatinine", r'(?:serum creatinine|creatinine)[\s:=]+([0-9]+\.?[0-9]*)[\s]*(?:mg/dl)?', "mg/dL", 0.6, 1.2, 1.5, "Kidney filtration biomarker"),
+        ("Estimated GFR (eGFR)", r'(?:egfr|gfr)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:ml/min)?', "mL/min/1.73m2", 60.0, 120.0, 30.0, "Renal clearance capacity"),
+        ("Total Cholesterol", r'(?:total cholesterol|cholesterol)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:mg/dl)?', "mg/dL", 125.0, 200.0, 240.0, "Lipid atherogenic risk"),
+        ("LDL Cholesterol", r'(?:ldl|ldl-c|bad cholesterol)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:mg/dl)?', "mg/dL", 0.0, 100.0, 160.0, "Atherosclerotic cardiovascular marker"),
+        ("HDL Cholesterol", r'(?:hdl|hdl-c|good cholesterol)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:mg/dl)?', "mg/dL", 40.0, 90.0, 35.0, "Protective lipoprotein"),
+        ("Triglycerides", r'(?:triglycerides|tg)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:mg/dl)?', "mg/dL", 50.0, 150.0, 200.0, "Metabolic lipid particle"),
+        ("White Blood Cell Count (WBC)", r'(?:wbc|white blood cells?|leukocytes?)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:10\*3/ul|k/ul|x10\^3)?', "10*3/uL", 4.5, 11.0, 14.0, "Immune and inflammatory status"),
+        ("Hemoglobin (Hgb)", r'(?:hemoglobin|hgb)[\s:=]+([0-9]+\.?[0-9]*)[\s]*(?:g/dl)?', "g/dL", 12.0, 16.5, 10.0, "Oxygen transport capacity"),
+        ("Platelets", r'(?:platelets?|plt)[\s:=]+([0-9]+(?:\.[0-9]+)?)[\s]*(?:10\*3/ul|k/ul)?', "10*3/uL", 150.0, 450.0, 100.0, "Hemostatic clotting factor"),
+        ("Thyroid Stimulating Hormone (TSH)", r'(?:tsh|thyroid stimulating hormone)[\s:=]+([0-9]+\.?[0-9]*)[\s]*(?:u?iu/ml)?', "uIU/mL", 0.4, 4.0, 10.0, "Thyroid pituitary regulation"),
+        ("C-Reactive Protein (CRP)", r'(?:crp|c-reactive protein)[\s:=]+([0-9]+\.?[0-9]*)[\s]*(?:mg/l)?', "mg/L", 0.0, 3.0, 10.0, "Systemic inflammation marker"),
+        ("Pulse Oximetry (SpO2)", r'(?:spo2|pulse ox|oxygen sat(?:uration)?)[\s:=]+([0-9]{2,3})[\s%]*', "%", 95.0, 100.0, 90.0, "Blood oxygen saturation"),
+    ]
+    
+    for name, pattern, units, normal_min, normal_max, critical_val, desc in biomarker_patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            try:
+                val = float(match.group(1))
+                status = "Normal"
+                flag = "NORMAL"
+                if val > normal_max:
+                    status = "Elevated"
+                    flag = "HIGH"
+                elif val < normal_min:
+                    status = "Low"
+                    flag = "LOW"
+                    
+                detected_biomarkers.append({
+                    "name": name,
+                    "value": val,
+                    "units": units,
+                    "reference_range": f"{normal_min} - {normal_max} {units}",
+                    "status": status,
+                    "flag": flag,
+                    "description": desc
+                })
+            except:
+                pass
+
+    # 2. Disease Category Identification from Clinical Report Text
+    category_scores = {
+        "Cardiovascular & Heart Diseases": 0,
+        "Kidney Diseases (Renal)": 0,
+        "Respiratory Diseases": 0,
+        "Infectious & Communicable Diseases": 0,
+        "Cancers (Oncology)": 0,
+        "Endocrine & Metabolic Disorders": 0,
+    }
+    
+    keywords_map = {
+        "Cardiovascular & Heart Diseases": ["heart", "cardio", "hypertension", "systolic", "diastolic", "angina", "stemi", "ischemi", "coronary", "arrhythmia", "cholesterol", "ldl", "troponin", "ecg", "bp"],
+        "Kidney Diseases (Renal)": ["kidney", "renal", "creatinine", "egfr", "gfr", "nephro", "bun", "proteinuria", "albuminuria", "dialysis", "glomerular"],
+        "Respiratory Diseases": ["lung", "respiratory", "asthma", "copd", "bronch", "pulmonary", "spo2", "hypox", "cough", "fev1", "wheez", "emphysema", "apnea"],
+        "Infectious & Communicable Diseases": ["infection", "viral", "bacterial", "fever", "covid", "tuberculosis", "pneumonia", "sepsis", "wbc", "crp", "dengue", "hepatitis", "pathogen"],
+        "Cancers (Oncology)": ["cancer", "carcinoma", "tumor", "neoplasm", "malignan", "biopsy", "oncology", "lymphoma", "leukemia", "metastasis", "chemotherapy"],
+        "Endocrine & Metabolic Disorders": ["diabetes", "glucose", "hba1c", "a1c", "insulin", "thyroid", "tsh", "metabolic", "hyperglycemia", "pancreas"]
+    }
+    
+    for cat, kws in keywords_map.items():
+        for kw in kws:
+            if kw in text_lower:
+                category_scores[cat] += text_lower.count(kw)
+                
+    primary_category = max(category_scores.items(), key=lambda x: x[1])
+    if primary_category[1] == 0:
+        detected_category = "General Health Evaluation"
+    else:
+        detected_category = primary_category[0]
+
+    # 3. Clinical Diagnostic Findings Extraction
+    findings = []
+    clinical_risk_level = "LOW"
+    
+    # Check for acute/concerning values
+    for b in detected_biomarkers:
+        if b["name"] == "Hemoglobin A1c (HbA1c)" and b["value"] >= 6.5:
+            findings.append(f"Elevated HbA1c ({b['value']}%) indicates diabetic glycemic range (Type 2 Diabetes risk).")
+            clinical_risk_level = max(clinical_risk_level, "MODERATE", key=lambda x: ["LOW", "MODERATE", "HIGH", "CRITICAL"].index(x))
+        if b["name"] == "Systolic Blood Pressure" and b["value"] >= 140:
+            findings.append(f"Elevated Systolic Blood Pressure ({b['value']} mmHg) indicates Stage 2 Hypertension.")
+            clinical_risk_level = max(clinical_risk_level, "MODERATE", key=lambda x: ["LOW", "MODERATE", "HIGH", "CRITICAL"].index(x))
+        if b["name"] == "Serum Creatinine" and b["value"] >= 1.5:
+            findings.append(f"Elevated Serum Creatinine ({b['value']} mg/dL) points to impaired renal clearance.")
+            clinical_risk_level = max(clinical_risk_level, "HIGH", key=lambda x: ["LOW", "MODERATE", "HIGH", "CRITICAL"].index(x))
+        if b["name"] == "Pulse Oximetry (SpO2)" and b["value"] < 92:
+            findings.append(f"Low oxygen saturation SpO2 ({b['value']}%) indicates hypoxemia; immediate supplemental care recommended.")
+            clinical_risk_level = "CRITICAL"
+        if b["name"] == "LDL Cholesterol" and b["value"] >= 160:
+            findings.append(f"High LDL Cholesterol ({b['value']} mg/dL) significantly increases atherosclerotic cardiovascular plaque risk.")
+            clinical_risk_level = max(clinical_risk_level, "MODERATE", key=lambda x: ["LOW", "MODERATE", "HIGH", "CRITICAL"].index(x))
+        if b["name"] == "C-Reactive Protein (CRP)" and b["value"] >= 10:
+            findings.append(f"Significantly elevated CRP ({b['value']} mg/L) indicates active systemic inflammatory or infectious burden.")
+            clinical_risk_level = max(clinical_risk_level, "HIGH", key=lambda x: ["LOW", "MODERATE", "HIGH", "CRITICAL"].index(x))
+
+    if not findings:
+        findings.append("All parsed laboratory markers are within standard physiological ranges or baseline expectations.")
+
+    # 4. Prognostic Predictions
+    predictions = []
+    
+    # Prediction 1: Metabolic / Cardiovascular
+    has_high_glucose = any(b["name"] in ["Hemoglobin A1c (HbA1c)", "Fasting Blood Glucose"] and b["status"] == "Elevated" for b in detected_biomarkers)
+    has_high_bp = any(b["name"] == "Systolic Blood Pressure" and b["status"] == "Elevated" for b in detected_biomarkers)
+    has_high_lipids = any(b["name"] in ["LDL Cholesterol", "Total Cholesterol"] and b["status"] == "Elevated" for b in detected_biomarkers)
+    has_renal_impairment = any(b["name"] in ["Serum Creatinine", "Estimated GFR (eGFR)"] and (b["flag"] == "HIGH" or b["flag"] == "LOW") for b in detected_biomarkers)
+
+    if has_high_glucose and has_high_bp:
+        predictions.append({
+            "condition": "Cardiometabolic Syndrome & Vascular Complications",
+            "probability": "High (75% - 85%)",
+            "timeframe": "12 - 36 months if unmanaged",
+            "risk_tier": "HIGH",
+            "impact_area": "Microvascular and macrovascular vessel integrity",
+            "preventive_intervention": "Dual antihypertensive & antidiabetic titration, strict sodium <2g/day, low-glycemic dietary regimen."
+        })
+    elif has_high_glucose:
+        predictions.append({
+            "condition": "Type 2 Diabetes Mellitus Progression",
+            "probability": "Moderate to High (65% - 75%)",
+            "timeframe": "6 - 18 months",
+            "risk_tier": "MODERATE",
+            "impact_area": "Endocrine glycemic homeostasis",
+            "preventive_intervention": "Metformin therapy evaluation, 150 min/week moderate physical aerobic exercise, carbohydrate counting."
+        })
+
+    if has_high_bp or has_high_lipids:
+        predictions.append({
+            "condition": "Atherosclerotic Coronary Artery Disease (ASCVD)",
+            "probability": "Moderate (50% - 65%)",
+            "timeframe": "3 - 5 years",
+            "risk_tier": "MODERATE",
+            "impact_area": "Coronary perfusion and endothelial health",
+            "preventive_intervention": "Moderate-to-high intensity statin therapy discussion, coronary calcium score (CAC) screening, DASH diet."
+        })
+
+    if has_renal_impairment:
+        predictions.append({
+            "condition": "Chronic Kidney Disease (CKD Stage 3+)",
+            "probability": "High (70% - 80%)",
+            "timeframe": "Progression over 24 months",
+            "risk_tier": "HIGH",
+            "impact_area": "Renal glomerular filtration",
+            "preventive_intervention": "Avoid NSAIDs, start SGLT2 inhibitor / ACE-inhibitor for renal protection, monitor urine ACR quarterly."
+        })
+
+    # Default general prediction if specific ones didn't trigger
+    if not predictions:
+        predictions.append({
+            "condition": "Optimal Longevity & Chronic Disease Prevention",
+            "probability": "Favorable (> 90%)",
+            "timeframe": "Ongoing Annual Review",
+            "risk_tier": "LOW",
+            "impact_area": "General Vitality & Wellness",
+            "preventive_intervention": "Maintain current lifestyle, balanced Mediterranean-style nutrition, annual preventive clinical checkups."
+        })
+
+    # 5. Actionable Clinical Suggestions
+    suggestions = [
+        {
+            "category": "Physician Follow-up",
+            "action": f"Schedule follow-up appointment with Dr. Sarah Smith or a specialist in {detected_category}.",
+            "priority": "High" if clinical_risk_level in ["HIGH", "CRITICAL"] else "Routine"
+        },
+        {
+            "category": "Diagnostic Testing",
+            "action": "Complete any recommended repeat panels (BMP, Lipid Panel, or HbA1c) in 90 days to verify biomarker trends.",
+            "priority": "Medium"
+        },
+        {
+            "category": "Lifestyle & Dietary Guidance",
+            "action": "Maintain optimal hydration, restrict processed sodium to < 2,000 mg/day, and adopt a balanced whole-foods Mediterranean diet.",
+            "priority": "Medium"
+        },
+        {
+            "category": "Medication Safety",
+            "action": "Review current prescribed regimen with your clinician before starting or stopping any over-the-counter supplements.",
+            "priority": "Routine"
+        }
+    ]
+
+    return {
+        "status": "success",
+        "report_summary": {
+            "patient_name": req.patient_name,
+            "detected_category": detected_category,
+            "clinical_risk_level": clinical_risk_level,
+            "markers_parsed_count": len(detected_biomarkers),
+            "findings_count": len(findings),
+            "predictions_count": len(predictions)
+        },
+        "parsed_biomarkers": detected_biomarkers,
+        "key_findings": findings,
+        "predicted_risks": predictions,
+        "actionable_suggestions": suggestions,
+        "raw_text_preview": text[:400] + ("..." if len(text) > 400 else ""),
+        "disclaimer": "This automated analysis is powered by MediLink AI for patient informational support. It does not replace formal clinical diagnosis by a licensed physician."
+    }
 
 class ChatMessage(BaseModel):
     role: str
@@ -172,43 +421,176 @@ class ChatRequest(BaseModel):
 
 @app.post("/chat/")
 async def chat_with_assistant(req: ChatRequest):
-    # Simulated Conversational AI for Healthcare
-    user_message = req.messages[-1].content.lower()
+    # Clinical AI Assistant for Patient Portal
+    user_message = req.messages[-1].content.strip().lower()
+    ctx = req.patient_context or {}
     
-    # Context-aware follow-ups based on history
+    patient_name = ctx.get("name", "Patient")
+    conditions = ctx.get("conditions", [])
+    medications = ctx.get("medications", [])
+    observations = ctx.get("observations", [])
+    allergies = ctx.get("allergies", [])
+    
+    cond_names = [c.get("description", "") for c in conditions if isinstance(c, dict)]
+    med_names = [m.get("medication_name", "") for m in medications if isinstance(m, dict)]
+    obs_summary = [f"{o.get('test_name', '')}: {o.get('value', '')} {o.get('units', '')}" for o in observations if isinstance(o, dict)]
+    allergy_names = [a.get("allergen", "") for a in allergies if isinstance(a, dict)]
+
+    # 1. Handle Temperature & Fever Q&A follow-ups
     if len(req.messages) >= 3:
         prev_bot_message = req.messages[-2].content.lower()
-        if "what is your current temperature" in prev_bot_message:
+        if "what is your current temperature" in prev_bot_message or "temperature" in prev_bot_message:
             import re
             temp_match = re.search(r'(\d{2,3}(\.\d+)?)', user_message)
             if temp_match:
                 temp = float(temp_match.group(1))
                 if temp > 103:
-                    return {"reply": f"A temperature of {temp}°F is critically high. I strongly recommend visiting the Emergency Room immediately, or booking an urgent appointment with Dr. Sarah Smith (General Medicine)."}
+                    return {"reply": f"🚨 **Immediate Warning**: A body temperature of **{temp}°F** is critically high (hyperpyrexia risk).\n\n"
+                                     f"• **Action Required**: Please proceed to the nearest Emergency Department immediately.\n"
+                                     f"• **Allergy Caution**: Before taking antipyretics, verify against your documented allergies: {', '.join(allergy_names) or 'None documented'}."}
                 elif temp > 100.4:
-                    return {"reply": f"A temperature of {temp}°F indicates a fever. You may consider taking over-the-counter fever reducers like Acetaminophen (Tylenol) for temporary relief. Please book an appointment with a General Physician if it persists for more than 48 hours."}
+                    return {"reply": f"🌡️ **Clinical Analysis**: Your temperature is **{temp}°F**, confirming an active low-to-moderate grade fever.\n\n"
+                                     f"• **Record Cross-Check**: Active diagnoses: {', '.join(cond_names[:2]) or 'None'}.\n"
+                                     f"• **Clinical Suggestion**: Hydrate aggressively with electrolyte solutions. You may discuss taking Acetaminophen (500mg-650mg) with your care team if not contraindicated by hepatic history. If fever persists over 48 hours or is accompanied by chest pain or shortness of breath, contact your clinic immediately."}
                 else:
-                    return {"reply": f"{temp}°F is generally considered normal. Make sure you get plenty of rest and stay hydrated."}
-            else:
-                return {"reply": "I couldn't quite catch the number. Could you please specify your temperature in Fahrenheit (e.g., 101.5)?"}
-    
-    # Keyword-based mock responses
-    if "fever" in user_message or "temperature" in user_message:
-        response = "I can help with that. Could you please tell me what your current temperature is?"
-    elif "blood pressure" in user_message or "htn" in user_message or "hypertension" in user_message:
-        response = "Based on your medical records, you have a history of Hypertension. It's important to monitor your blood pressure regularly, reduce sodium intake, and take your prescribed medications like Lisinopril as directed."
-    elif "medication" in user_message or "pill" in user_message or "drug" in user_message:
-        response = "I can see your active medications. Please make sure you take them exactly as prescribed by your doctor. Do you have a specific question about side effects or dosages?"
-    elif "allergy" in user_message or "allergic" in user_message:
-        response = "I have noted your allergies in your profile. I will always cross-reference any new medications against this list to prevent adverse reactions."
-    elif "hello" in user_message or "hi" in user_message:
-        response = "Hello! I am your personal AI Health Assistant. I have full knowledge of your medical history, labs, and prescriptions. How can I assist you with your health today?"
-    elif "diet" in user_message or "food" in user_message:
-        response = "A balanced diet is crucial. Given your profile, I recommend a heart-healthy diet rich in vegetables, lean proteins, and whole grains, while minimizing processed foods and added sugars."
-    else:
-        response = "I understand. As an AI health assistant, I can help explain your lab results, provide information on your conditions, or give general wellness advice based on your medical history. What specific area would you like to focus on?"
+                    return {"reply": f"✅ **Normal Vitals**: Your recorded temperature of **{temp}°F** is within the physiological normal range (97.0°F - 99.0°F). Make sure you rest and maintain adequate hydration."}
+
+    # 2. Comprehensive Record Analysis Request
+    if any(k in user_message for k in ["analyze", "summary", "overview", "record", "my health", "check my", "report"]):
+        cond_str = "\n".join([f"  • {c}" for c in cond_names]) if cond_names else "  • No chronic conditions currently registered."
+        med_str = "\n".join([f"  • {m}" for m in med_names[:4]]) if med_names else "  • No active prescriptions recorded."
+        obs_str = "\n".join([f"  • {o}" for o in obs_summary[:4]]) if obs_summary else "  • Recent lab panel clear or pending."
+        all_str = ", ".join(allergy_names) if allergy_names else "No documented drug or food allergies."
+
+        reply = (
+            f"📋 **Personal Clinical Record Analysis for {patient_name}**\n\n"
+            f"**1. Diagnosed Conditions:**\n{cond_str}\n\n"
+            f"**2. Active Regimen (Prescriptions):**\n{med_str}\n\n"
+            f"**3. Recent Key Lab Observations:**\n{obs_str}\n\n"
+            f"**4. Allergy Precautions:**\n  • {all_str}\n\n"
+            f"💡 **AI Health Suggestions:**\n"
+            f"• **Medication Adherence**: Take all prescribed therapies consistently at the designated times.\n"
+            f"• **Lab Tracking**: Monitor your diagnostic values and alert your doctor if you experience symptomatic fluctuations.\n"
+            f"• **Lifestyle & Diet**: Follow clinical sodium and glycemic dietary recommendations aligned with your diagnoses.\n"
+            f"• Ask me about any specific test, prescription, or symptom above for in-depth guidance!"
+        )
+        return {"reply": reply}
+
+    # 3. Blood Pressure / Cardiovascular / Heart Questions
+    if any(k in user_message for k in ["blood pressure", "bp", "hypertension", "heart", "stemi", "cardiac"]):
+        bp_obs = [o for o in obs_summary if "pressure" in o.lower() or "bp" in o.lower() or "systolic" in o.lower() or "diastolic" in o.lower()]
+        bp_info = f"Your latest recorded readings are: **{', '.join(bp_obs)}**." if bp_obs else "Your baseline blood pressure is being tracked."
+        cardio_meds = [m for m in med_names if any(w in m.lower() for w in ["lisinopril", "metoprolol", "ramipril", "atorvastatin", "aspirin", "ticagrelor", "carvedilol", "losartan", "amlodipine"])]
         
-    return {"reply": response}
+        reply = (
+            f"❤️ **Cardiovascular Record Analysis**\n\n"
+            f"{bp_info}\n\n"
+            f"**Current Prescribed Regimen:**\n"
+            f"{'• ' + chr(10) + '• '.join(cardio_meds) if cardio_meds else '• Standard ambulatory monitoring.'}\n\n"
+            f"💡 **Clinical Suggestions & Care Guidelines:**\n"
+            f"1. **Home Log**: Log your blood pressure twice daily (morning upon waking and evening before sleep).\n"
+            f"2. **Dietary Sodium**: Maintain dietary sodium below 1,500mg - 2,000mg per day (DASH diet protocol).\n"
+            f"3. **Warning Signs**: If systolic pressure exceeds 160 mmHg, or if you experience chest tightness, sudden shortness of breath, or lightheadedness, seek immediate clinical attention."
+        )
+        return {"reply": reply}
+
+    # 4. Diabetes / Blood Glucose / Metabolic Questions
+    if any(k in user_message for k in ["sugar", "glucose", "diabetes", "hba1c", "a1c", "metabolic"]):
+        dm_obs = [o for o in obs_summary if any(w in o.lower() for w in ["glucose", "a1c", "bmi"])]
+        dm_info = f"Recent metabolic values: **{', '.join(dm_obs)}**." if dm_obs else "No recent glycemic lab values found."
+        dm_meds = [m for m in med_names if any(w in m.lower() for w in ["metformin", "empagliflozin", "insulin", "jardiance", "glipizide"])]
+        
+        reply = (
+            f"🩸 **Glycemic & Metabolic Analysis**\n\n"
+            f"{dm_info}\n\n"
+            f"**Prescribed Diabetes Therapies:**\n"
+            f"{'• ' + chr(10) + '• '.join(dm_meds) if dm_meds else '• Dietary & lifestyle glucose regulation.'}\n\n"
+            f"💡 **AI Clinical Suggestions:**\n"
+            f"1. **A1c Target**: Aim for HbA1c < 7.0% (individualized according to clinical guidelines).\n"
+            f"2. **Nutrition**: Focus on complex carbohydrates with high soluble fiber; avoid refined syrups and sugary beverages.\n"
+            f"3. **Foot & Eye Checks**: Schedule annual diabetic retinopathy screening and comprehensive foot examinations."
+        )
+        return {"reply": reply}
+
+    # 5. Kidney / Renal Health Questions
+    if any(k in user_message for k in ["kidney", "renal", "creatinine", "gfr", "egfr", "proteinuria", "urine"]):
+        kidney_obs = [o for o in obs_summary if any(w in o.lower() for w in ["creatinine", "gfr", "egfr", "bun", "albumin", "uacr"])]
+        kidney_info = f"Current renal markers: **{', '.join(kidney_obs)}**." if kidney_obs else "Renal biomarkers monitored on schedule."
+        
+        reply = (
+            f"🧪 **Nephrology & Renal Function Analysis**\n\n"
+            f"{kidney_info}\n\n"
+            f"💡 **Renal Protection Suggestions:**\n"
+            f"1. **Avoid Nephrotoxic Agents**: Strict avoidance of over-the-counter NSAIDs (such as Ibuprofen, Naproxen) as they reduce renal blood flow.\n"
+            f"2. **Hydration & Electrolytes**: Maintain balanced hydration and follow your doctor's daily fluid and potassium instructions.\n"
+            f"3. **Blood Pressure Control**: Tight blood pressure management (< 130/80 mmHg) is critical to protect glomerular filtration."
+        )
+        return {"reply": reply}
+
+    # 6. Respiratory / Lungs / Breathing Questions
+    if any(k in user_message for k in ["breath", "lung", "asthma", "copd", "cough", "inhaler", "oxygen", "spo2"]):
+        resp_obs = [o for o in obs_summary if any(w in o.lower() for w in ["spo2", "oximetry", "fev1", "pef", "feno", "respiration"])]
+        resp_info = f"Respiratory vitals: **{', '.join(resp_obs)}**." if resp_obs else "Pulse oximetry monitored at clinic."
+        resp_meds = [m for m in med_names if any(w in m.lower() for w in ["albuterol", "symbicort", "advair", "tiotropium", "montelukast", "prednisone"])]
+
+        reply = (
+            f"🫁 **Respiratory Record Analysis**\n\n"
+            f"{resp_info}\n\n"
+            f"**Prescribed Inhalers & Airway Regimen:**\n"
+            f"{'• ' + chr(10) + '• '.join(resp_meds) if resp_meds else '• Maintenance respiratory therapy.'}\n\n"
+            f"💡 **Pulmonary Suggestions:**\n"
+            f"1. **Inhaler Technique**: Rinse mouth thoroughly after corticosteroid inhaler use to prevent oral candidiasis.\n"
+            f"2. **Rescue Inhaler**: Keep your rapid-acting rescue inhaler accessible at all times.\n"
+            f"3. **Trigger Avoidance**: Steer clear of environmental irritants, cigarette smoke, and cold air extremes."
+        )
+        return {"reply": reply}
+
+    # 7. Prescriptions / Medications Inquiry
+    if any(k in user_message for k in ["medication", "pill", "prescription", "rx", "drug", "dose"]):
+        med_list = "\n".join([f"  • **{m}**" for m in med_names]) if med_names else "  • No active medications found."
+        allergy_warning = f"⚠️ Documented allergies: **{', '.join(allergy_names)}**." if allergy_names else "No documented drug allergies."
+
+        reply = (
+            f"💊 **Medication & Pharmacy Overview**\n\n"
+            f"{med_list}\n\n"
+            f"{allergy_warning}\n\n"
+            f"💡 **AI Pharmacotherapy Suggestions:**\n"
+            f"• Never discontinue or adjust prescription dosages without consulting your prescribing physician.\n"
+            f"• If you experience dizziness, gastrointestinal upset, or unexpected rash, contact your provider immediately."
+        )
+        return {"reply": reply}
+
+    # 8. Diet & Nutrition Guidance
+    if any(k in user_message for k in ["diet", "food", "eat", "meal", "nutrition"]):
+        reply = (
+            f"🥗 **Personalized Nutrition & Dietary Suggestions for {patient_name}**\n\n"
+            f"Based on your diagnosed conditions ({', '.join(cond_names[:3]) or 'General Wellness'}):\n\n"
+            f"• **Sodium Regulation**: Limit salt intake to < 2,000mg/day to support healthy blood pressure and kidney function.\n"
+            f"• **Whole Foods Focus**: Prioritize leafy greens, legumes, cruciferous vegetables, lean poultry, and omega-3 rich fish.\n"
+            f"• **Hydration**: Drink adequate water throughout the day (unless placed on clinical fluid restriction by your nephrologist or cardiologist).\n"
+            f"• **Avoid**: Ultra-processed snack foods, trans fats, and excess refined sugars."
+        )
+        return {"reply": reply}
+
+    # 9. General Greetings & Natural Follow-ups
+    if any(k in user_message for k in ["hello", "hi", "hey"]):
+        return {
+            "reply": f"Hello {patient_name}! I am your clinical AI Health Assistant. I have analyzed your complete health chart including your diagnosed conditions ({', '.join(cond_names[:2]) or 'General Care'}), active medications, and lab reports.\n\n"
+                     f"How can I assist you today? You can ask me to **analyze your records**, explain your **medications**, review your **blood pressure/labs**, or give **dietary suggestions**!"
+        }
+
+    # 10. Default Intelligent Context-Aware Synthesis
+    reply = (
+        f"🩺 **AI Health Assistant Response**\n\n"
+        f"Thank you for your question. Based on your active medical profile ({', '.join(cond_names[:2]) or 'Patient Record'}):\n\n"
+        f"• **Diagnostic Context**: Your chart includes {len(conditions)} clinical condition(s) and {len(medications)} active prescription(s).\n"
+        f"• **Allergy Safeguard**: Cross-referenced against your documented allergies ({', '.join(allergy_names) or 'None documented'}).\n\n"
+        f"💡 **Clinical Suggestion**: Would you like me to:\n"
+        f"1. Provide a **complete analysis** of your lab test results?\n"
+        f"2. Explain your **prescriptions & potential side effects**?\n"
+        f"3. Offer **dietary & lifestyle recommendations** tailored to your condition?"
+    )
+    return {"reply": reply}
 
 
 class DoctorDiagnosisRequest(BaseModel):

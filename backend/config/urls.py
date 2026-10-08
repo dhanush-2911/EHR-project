@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from patients.views import PatientViewSet, get_health_id_qr, resolve_health_id
-from records.views import EncounterViewSet, ConditionViewSet, AllergyViewSet, PrescriptionViewSet, ObservationViewSet, ProcedureViewSet, PatientInsightsView, PatientTimelineView, PatientChatView, DoctorDiagnosisView, OcrExtractionView, ReferralViewSet, FhirPatientView
+from records.views import EncounterViewSet, ConditionViewSet, AllergyViewSet, PrescriptionViewSet, ObservationViewSet, ProcedureViewSet, PatientInsightsView, PatientTimelineView, PatientChatView, DoctorDiagnosisView, OcrExtractionView, ReferralViewSet, FhirPatientView, PatientReportUploadAnalysisView
 from consent.views import ConsentViewSet
 from audit.views import AuditViewSet
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -53,6 +53,7 @@ urlpatterns = [
     path('api/patients/<uuid:patient_pk>/chat/', PatientChatView.as_view()),
     path('api/patients/<uuid:patient_pk>/doctor-diagnosis/', DoctorDiagnosisView.as_view()),
     path('api/ocr/', OcrExtractionView.as_view()),
+    path('api/analyze-report/', PatientReportUploadAnalysisView.as_view()),
 
     path('api/consents/', ConsentViewSet.as_view({'get': 'list'})),
     path('api/consents/request/', ConsentViewSet.as_view({'post': 'request_access'})),

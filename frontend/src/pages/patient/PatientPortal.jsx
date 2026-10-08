@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Check, X, Clock, Activity, FileText, AlertTriangle, User, Calendar, Pill, HeartPulse, FileHeart, Sparkles, Send, ScanLine } from 'lucide-react';
+import { 
+  Shield, Check, X, Clock, Activity, FileText, AlertTriangle, 
+  User, Calendar, Pill, HeartPulse, FileHeart, Sparkles, Send, 
+  ScanLine, Upload, FileUp, CheckCircle2, TrendingUp, AlertCircle, 
+  Info, RefreshCw, ChevronRight, Download
+} from 'lucide-react';
 import api from '../../api';
 
 export default function PatientPortal() {
@@ -15,6 +20,75 @@ export default function PatientPortal() {
   const [chatLoading, setChatLoading] = useState(false);
   
   const [records, setRecords] = useState({ encounters: [], conditions: [], observations: [], prescriptions: [], allergies: [] });
+
+  // Medical Report Upload & AI Analysis State
+  const [reportFile, setReportFile] = useState(null);
+  const [reportText, setReportText] = useState('');
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportResult, setReportResult] = useState(null);
+  const [reportError, setReportError] = useState(null);
+
+  const handleReportAnalyze = async (e) => {
+    if (e) e.preventDefault();
+    if (!reportFile && !reportText.trim()) {
+      setReportError('Please upload a medical report file or enter report text.');
+      return;
+    }
+
+    setReportLoading(true);
+    setReportError(null);
+
+    try {
+      const formData = new FormData();
+      if (reportFile) {
+        formData.append('file', reportFile);
+      }
+      if (reportText) {
+        formData.append('report_text', reportText);
+      }
+      if (patient?.id) {
+        formData.append('patient_id', patient.id);
+      }
+
+      const res = await api.post('analyze-report/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      setReportResult(res.data);
+    } catch (err) {
+      console.error(err);
+      setReportError(err.response?.data?.error || 'Failed to analyze medical report. Please check AI Engine connection.');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleSampleReport = () => {
+    setReportFile(null);
+    setReportText(
+`METRO HEALTH LABS - COMPREHENSIVE METABOLIC & LIPID PANEL
+Patient: Jane Smith | Age: 44 | Specimen ID: LAB-90482
+Date: 10/05/2026 | Ordering Physician: Dr. Sarah Smith
+
+TEST RESULTS:
+- Fasting Blood Glucose: 138 mg/dL (Normal: 70 - 99 mg/dL) [HIGH]
+- Hemoglobin A1c (HbA1c): 7.2% (Normal: 4.0 - 5.6%) [ELEVATED]
+- Systolic Blood Pressure: 144 / 88 mmHg (Normal: < 120/80 mmHg) [HIGH]
+- Serum Creatinine: 1.42 mg/dL (Normal: 0.6 - 1.2 mg/dL) [HIGH]
+- Estimated GFR (eGFR): 52 mL/min/1.73m2 (Normal: > 60 mL/min) [LOW]
+- Total Cholesterol: 228 mg/dL (Normal: < 200 mg/dL) [HIGH]
+- LDL Cholesterol: 154 mg/dL (Normal: < 100 mg/dL) [HIGH]
+- HDL Cholesterol: 42 mg/dL (Normal: > 40 mg/dL) [NORMAL]
+- Triglycerides: 185 mg/dL (Normal: < 150 mg/dL) [ELEVATED]
+- White Blood Cell Count (WBC): 8.4 10*3/uL (Normal: 4.5 - 11.0) [NORMAL]
+- Pulse Oximetry (SpO2): 98% (Normal: 95 - 100%) [NORMAL]
+
+CLINICAL IMPRESSION:
+Patient demonstrates persistent hyperglycemia consistent with Type 2 Diabetes Mellitus with early mild microvascular nephropathy markers (reduced eGFR) and Stage 2 Essential Hypertension.`
+    );
+  };
 
   const fetchData = async () => {
     try {
@@ -165,6 +239,7 @@ export default function PatientPortal() {
       {/* Tabs */}
       <div className="flex overflow-x-auto border-b border-slate-200 mb-6 gap-2 hide-scrollbar">
         <button onClick={() => setActiveTab('records')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'records' ? 'border-b-2 border-primary-600 text-primary-700 bg-primary-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><FileHeart className="w-5 h-5 mr-2"/> My Health Records</button>
+        <button onClick={() => setActiveTab('report-analysis')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'report-analysis' ? 'border-b-2 border-indigo-600 text-indigo-700 bg-indigo-50/70 rounded-t-lg shadow-xs' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-50'}`}><FileUp className="w-5 h-5 mr-2 text-indigo-600"/> Upload & Analyze Report</button>
         <button onClick={() => setActiveTab('consents')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'consents' ? 'border-b-2 border-primary-600 text-primary-700 bg-primary-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><Shield className="w-5 h-5 mr-2"/> Access Consents</button>
         <button onClick={() => setActiveTab('audit')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'audit' ? 'border-b-2 border-primary-600 text-primary-700 bg-primary-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><FileText className="w-5 h-5 mr-2"/> Audit History</button>
         <button onClick={() => setActiveTab('ai')} className={`px-6 py-4 font-bold whitespace-nowrap transition-colors flex items-center ${activeTab === 'ai' ? 'border-b-2 border-purple-600 text-purple-700 bg-purple-50/50 rounded-t-lg' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}><Sparkles className="w-5 h-5 mr-2"/> AI Health Assistant</button>
@@ -402,6 +477,267 @@ export default function PatientPortal() {
         </div>
       )}
       
+      {/* Content - Upload & Analyze Medical Report */}
+      {activeTab === 'report-analysis' && (
+        <div className="space-y-8 animate-fade-in">
+          {/* Header Banner */}
+          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-indigo-700 via-purple-700 to-blue-700 p-8 text-white shadow-xl">
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white">
+                    <FileUp className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black tracking-tight">Medical Report AI Analysis & Prediction</h2>
+                    <p className="text-indigo-100 text-sm mt-0.5">
+                      Upload your lab report or diagnostic summary to extract biomarkers, receive clinical insights, and get disease risk predictions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSampleReport}
+                className="px-4 py-2 bg-white/20 hover:bg-white/30 transition-all rounded-xl text-xs font-bold border border-white/30 backdrop-blur-md flex items-center gap-2 self-start md:self-auto"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                Load Sample Metabolic Report
+              </button>
+            </div>
+          </div>
+
+          {/* Upload and Input Form */}
+          <div className="glass-card p-6 md:p-8">
+            <form onSubmit={handleReportAnalyze} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* File Dropzone */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    1. Upload Report Document (PDF, TXT, CSV, or Image)
+                  </label>
+                  <div className="relative border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/30 hover:bg-indigo-50/60 rounded-2xl p-6 text-center transition-all cursor-pointer group flex flex-col items-center justify-center min-h-[180px]">
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,.csv,.png,.jpg,.jpeg"
+                      onChange={(e) => setReportFile(e.target.files?.[0] || null)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    {reportFile ? (
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-indigo-900 truncate max-w-xs">{reportFile.name}</p>
+                        <p className="text-xs text-indigo-600">{(reportFile.size / 1024).toFixed(1)} KB • Ready to analyze</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-bold text-slate-700">Click to browse or drop file here</p>
+                        <p className="text-xs text-slate-500 mt-1">Supports PDF diagnostic slips, Lab text files, or Scans</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Direct Text Area */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    2. Or Paste Medical Report Content Directly
+                  </label>
+                  <textarea
+                    rows={7}
+                    value={reportText}
+                    onChange={(e) => setReportText(e.target.value)}
+                    placeholder="e.g. Fasting Glucose: 130 mg/dL, HbA1c: 6.8%, Blood Pressure: 140/90, Creatinine: 1.3 mg/dL, Cholesterol: 220 mg/dL..."
+                    className="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-mono transition-all"
+                  />
+                </div>
+              </div>
+
+              {reportError && (
+                <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm font-semibold flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <span>{reportError}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-slate-100">
+                <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <Shield className="w-4 h-4 text-emerald-600" />
+                  HIPAA-aligned & cross-referenced against your personal EHR history
+                </span>
+
+                <button
+                  type="submit"
+                  disabled={reportLoading}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-sm shadow-lg shadow-indigo-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 hover:-translate-y-0.5"
+                >
+                  {reportLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Analyzing Report with AI...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      Run Full Report Analysis & Prediction
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* AI Analysis & Prediction Results */}
+          {reportResult && (
+            <div className="space-y-6 animate-slide-up">
+              {/* Executive Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-soft">
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Detected Category</span>
+                  <div className="text-base font-extrabold text-indigo-700">{reportResult.report_summary?.detected_category}</div>
+                </div>
+
+                <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-soft">
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Clinical Risk Level</span>
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase mt-1 ${
+                    reportResult.report_summary?.clinical_risk_level === 'CRITICAL' ? 'bg-red-100 text-red-800 border border-red-200' :
+                    reportResult.report_summary?.clinical_risk_level === 'HIGH' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
+                    reportResult.report_summary?.clinical_risk_level === 'MODERATE' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                    'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  }`}>
+                    {reportResult.report_summary?.clinical_risk_level || 'LOW'}
+                  </span>
+                </div>
+
+                <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-soft">
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Parsed Biomarkers</span>
+                  <div className="text-2xl font-black text-slate-800">{reportResult.parsed_biomarkers?.length || 0}</div>
+                </div>
+
+                <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-soft">
+                  <span className="text-[11px] uppercase font-bold text-slate-400 block mb-1">Predictions Generated</span>
+                  <div className="text-2xl font-black text-purple-700">{reportResult.predicted_risks?.length || 0}</div>
+                </div>
+              </div>
+
+              {/* Parsed Biomarkers Grid */}
+              {reportResult.parsed_biomarkers?.length > 0 && (
+                <div className="glass-card p-6 md:p-8">
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-indigo-600" />
+                      Extracted Laboratory Biomarkers & Vitals
+                    </h3>
+                    <span className="text-xs font-bold text-slate-500">Auto-calculated vs. Standard Clinical Ranges</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {reportResult.parsed_biomarkers.map((b, idx) => (
+                      <div key={idx} className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/50 hover:bg-white transition-all space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700">{b.name}</span>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            b.status === 'Elevated' ? 'bg-red-100 text-red-700' :
+                            b.status === 'Low' ? 'bg-blue-100 text-blue-700' :
+                            'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {b.status}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-xl font-extrabold text-slate-900">{b.value}</span>
+                          <span className="text-xs text-slate-500 font-medium">{b.units}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200 flex justify-between">
+                          <span>Ref: {b.reference_range}</span>
+                          <span className="text-slate-400 truncate max-w-[120px]">{b.description}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Key Findings and Prognostic Predictions */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Key Findings */}
+                <div className="glass-card p-6 md:p-8 space-y-4">
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    Key Clinical Findings
+                  </h3>
+                  <div className="space-y-3">
+                    {reportResult.key_findings?.map((finding, idx) => (
+                      <div key={idx} className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-sm font-medium flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <span>{finding}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* AI Disease Risk Predictions */}
+                <div className="glass-card p-6 md:p-8 space-y-4">
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-purple-600" />
+                    Prognostic Disease Risk Predictions
+                  </h3>
+                  <div className="space-y-3">
+                    {reportResult.predicted_risks?.map((pred, idx) => (
+                      <div key={idx} className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-extrabold text-purple-950 text-sm">{pred.condition}</h4>
+                          <span className="text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full bg-purple-200/80 text-purple-800">
+                            {pred.probability}
+                          </span>
+                        </div>
+                        <div className="text-xs text-purple-800/80">
+                          <strong>Horizon:</strong> {pred.timeframe} &bull; <strong>Area:</strong> {pred.impact_area}
+                        </div>
+                        <div className="text-xs text-slate-700 bg-white/80 p-2.5 rounded-xl border border-purple-100">
+                          <strong>Preventive Target:</strong> {pred.preventive_intervention}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actionable Clinical Suggestions */}
+              {reportResult.actionable_suggestions?.length > 0 && (
+                <div className="glass-card p-6 md:p-8 space-y-4">
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                    Personalized AI Action Suggestions
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {reportResult.actionable_suggestions.map((sug, idx) => (
+                      <div key={idx} className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-start gap-3">
+                        <div className="w-2 h-2 rounded-full bg-indigo-600 mt-2 flex-shrink-0" />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wide">{sug.category}</span>
+                            <span className="text-[10px] font-extrabold px-2 py-0.2 rounded bg-slate-100 text-slate-600">{sug.priority}</span>
+                          </div>
+                          <p className="text-xs text-slate-700 leading-relaxed font-medium">{sug.action}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Disclaimer */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-500 text-xs text-center font-medium">
+                {reportResult.disclaimer}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Content - Audit */}
       {activeTab === 'audit' && (
         <div className="glass-card overflow-hidden">
@@ -483,20 +819,63 @@ export default function PatientPortal() {
             )}
           </div>
           
+          <div className="p-3 border-t border-slate-100 bg-slate-50/70 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={chatLoading}
+              onClick={() => {
+                setChatInput('Please analyze all my health records and provide suggestions.');
+              }}
+              className="text-xs bg-white hover:bg-purple-50 text-purple-700 font-semibold px-3 py-1.5 rounded-lg border border-purple-200 transition-colors shadow-xs"
+            >
+              📊 Analyze My Health Records
+            </button>
+            <button
+              type="button"
+              disabled={chatLoading}
+              onClick={() => {
+                setChatInput('Review my active medications and give safety suggestions.');
+              }}
+              className="text-xs bg-white hover:bg-indigo-50 text-indigo-700 font-semibold px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors shadow-xs"
+            >
+              💊 Review My Medications
+            </button>
+            <button
+              type="button"
+              disabled={chatLoading}
+              onClick={() => {
+                setChatInput('Give me clinical dietary and lifestyle suggestions based on my diagnosis.');
+              }}
+              className="text-xs bg-white hover:bg-emerald-50 text-emerald-700 font-semibold px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors shadow-xs"
+            >
+              🥗 Personalized Diet Suggestions
+            </button>
+            <button
+              type="button"
+              disabled={chatLoading}
+              onClick={() => {
+                setChatInput('How are my blood pressure and latest lab values looking?');
+              }}
+              className="text-xs bg-white hover:bg-rose-50 text-rose-700 font-semibold px-3 py-1.5 rounded-lg border border-rose-200 transition-colors shadow-xs"
+            >
+              ❤️ Blood Pressure & Labs
+            </button>
+          </div>
+
           <div className="p-4 border-t border-slate-200 bg-white">
             <form onSubmit={sendMessage} className="flex space-x-3">
               <input 
                 type="text" 
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask about your blood pressure, medications, or diet..." 
-                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all text-sm"
+                placeholder="Ask to analyze your records, medication suggestions, or diet..." 
+                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all text-sm font-medium"
                 disabled={chatLoading}
               />
               <button 
                 type="submit" 
                 disabled={chatLoading || !chatInput.trim()}
-                className="bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[50px]"
+                className="bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[50px] shadow-sm hover:shadow-md"
               >
                 <Send className="w-5 h-5" />
               </button>
